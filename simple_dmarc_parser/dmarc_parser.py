@@ -5,6 +5,7 @@ import gzip
 import sys
 import json
 import argparse
+import tempfile
 from imap_tools import MailBox, AND
 
 parser = argparse.ArgumentParser(description='A tool that processes DMARC reports from a mailbox and gives a basic summary.')
@@ -102,11 +103,7 @@ def main():
     domains = {}
     uids = []
 
-    directory = './dmarctemp/'
-
-    # If we had an unclean run, remove the temporary files.
-    if os.path.isdir(directory):
-        shutil.rmtree(directory)
+    directory = tempfile.mkdtemp()
 
     mailbox = MailBox(server).login(username, password)
     # Loop over unread messages.
@@ -115,9 +112,8 @@ def main():
         for att in msg.attachments:
             # Retain the original filename.
             filename = att.filename
-            os.makedirs(directory, exist_ok=True)
             # Download the attachment.
-            with open(f'{directory}{filename}', 'wb') as f:
+            with open(os.path.join(directory, filename), 'wb') as f:
                 f.write(att.payload)
                 f.close()
             # Store UIDs for later deletion.
@@ -130,7 +126,7 @@ def main():
         sys.exit()
 
     for file in os.listdir(directory):
-        filename = f'{directory}{file}'
+        filename = os.path.join(directory, file)
         # If it's a regular .gz archive
         if '.gz' in file and 'tar' not in file:
             # gzip doesn't provide a filename, so split out one
@@ -143,13 +139,13 @@ def main():
                     f_out.write(f_in.read())
         # All other archive types can be shutil unpacked.
         else:
-            shutil.unpack_archive(f'{directory}{file}', f'{directory}')
+            shutil.unpack_archive(filename, directory)
 
     # Refresh our file list.
     for file in os.listdir(directory):
         # Grab the actual XML files, not the compressed files.
         if '.xml' in file and '.gz' not in file:
-            with open(f'{directory}{file}', 'r', encoding='utf8') as f:
+            with open(os.path.join(directory, file), 'r', encoding='utf8') as f:
                 content = f.read()
 
             # Convert XML to Dictionary. Data is within the 'feedback' header.
@@ -163,8 +159,15 @@ def main():
             else:
                 providers[provider] = 1
 
-            # Store the record(s) in a variable, so we can check if there's multiple.
-            records = data['record']
+            # Check for invalid reports that just contain report metadata.
+            # These seem to come from "email security" scans? But they don't appear to be solicited, nor RFC compliant.
+            if not 'record' in data:
+                if not silent:
+                    print(f'Skipping report with no record: {file}')
+                continue
+            else:
+                # Store the record(s) in a variable, so we can check if there's multiple.
+                records = data['record']
 
             # List means multiple reports.
             if type(records) == list:

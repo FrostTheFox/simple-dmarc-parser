@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "simple-dmarc-parser"
-version = "1.0.3"
+version = "1.1.0"
 description = "A Python script that processes DMARC reports from a mailbox and gives a basic summary."
 authors = ["FrostTheFox <python@frostthefox.pw>"]
 keywords = ["dmarc", "rua"]
@@ -10,11 +10,9 @@ homepage = "https://github.com/FrostTheFox/simple-dmarc-parser"
 repository = "https://github.com/FrostTheFox/simple-dmarc-parser"
 
 [tool.poetry.dependencies]
-python = "^3.6"
-xmltodict = "^0.13.0"
-imap-tools = "^0.56.0"
-
-[tool.poetry.dev-dependencies]
+python = ">=3.9"
+xmltodict = "^1.0.2"
+imap-tools = "^1.11.0"
 
 [tool.poetry.scripts]
 simple-dmarc-parser = "simple_dmarc_parser.dmarc_parser:main"
