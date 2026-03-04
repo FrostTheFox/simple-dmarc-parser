@@ -7,6 +7,7 @@ import json
 import argparse
 import tempfile
 from imap_tools import MailBox, AND
+from time import localtime
 
 parser = argparse.ArgumentParser(description='A tool that processes DMARC reports from a mailbox and gives a basic summary.')
 parser.add_argument('--server', help='IMAP Server IP/FQDN', required=False)
@@ -15,6 +16,7 @@ parser.add_argument('--password', help='IMAP Password', required=False)
 parser.add_argument('--config', help='Config file to use', required=False)
 parser.add_argument('--delete', help='Delete report messages after processing. THIS CANNOT BE UNDONE.', action='store_true')
 parser.add_argument('--silent', help='Silences non-error output.', action='store_true')
+parser.add_argument('--asjson', help='Prints non-error output in json format', action='store_false',required=False)
 
 
 def process_record(record, sources, domains):
@@ -80,6 +82,7 @@ def main():
         else:
             delete_messages = False
         silent = False
+        asjson = False
     # If config is provided, use that.
     elif args.config:
         with open(args.config, 'r') as f:
@@ -90,6 +93,7 @@ def main():
         password = config['password']
         delete_messages = config['delete_messages']
         silent = config['silent']
+        asjson = config['asjson']
     # Otherwise, use what is provided.
     else:
         server = args.server
@@ -97,11 +101,14 @@ def main():
         password = args.password
         delete_messages = args.delete
         silent = args.silent
+        asjson = args.asjson
 
     providers = {}
     sources = {}
     domains = {}
     uids = []
+    json_response = {'generated':'%04d-%02d-%02d.%02d:%02d:%02d' % localtime()[:6]}
+    
 
     directory = tempfile.mkdtemp()
 
@@ -122,7 +129,10 @@ def main():
     # If we didn't get anything from the IMAP server, exit.
     if not os.path.isdir(directory):
         if not silent:
-            print('No reports found, exiting.')
+            if not asjson:
+                print('No reports found, exiting.')
+            else:
+                json_response.setdefault('messages',[]).append('No reports found, exiting.')
         sys.exit()
 
     for file in os.listdir(directory):
@@ -163,7 +173,10 @@ def main():
             # These seem to come from "email security" scans? But they don't appear to be solicited, nor RFC compliant.
             if not 'record' in data:
                 if not silent:
-                    print(f'Skipping report with no record: {file}')
+                    if not asjson:
+                        print(f'Skipping report with no record: {file}')
+                    else:
+                        json_response.setdefault('messages',[]).append(f'Skipping report with no record: {file}')
                 continue
             else:
                 # Store the record(s) in a variable, so we can check if there's multiple.
@@ -178,31 +191,51 @@ def main():
 
             # If the record processing reported a failure, let the user see it.
             if not ok:
-                print('\nFailed DMARC report, printing:')
-                print(data)
+                if not asjson:
+                    print('\nFailed DMARC report, printing:')
+                    print(data)
+                else:
+                    json_response.setdefault('messages',[]).append('Failed DMARC report, printing:')
+                    json_response.setdefault('messages',[]).append(json.dumps(data))
 
     if not silent:
         # Output our summary.
-        print('\nReports evaluated:')
+        if not asjson:
+            print('\nReports evaluated:')
         for provider in sorted(providers.keys()):
-            print(f'{provider}: {providers[provider]}')
+            if not asjson:
+                print(f'{provider}: {providers[provider]}')
+            else:
+                json_response.setdefault('providers',{})[provider] = providers[provider]
 
-        print('\nMessages per Source IP:')
+        if not asjson:
+            print('\nMessages per Source IP:')
         for source in sorted(sources.keys()):
             count = sources[source]['count']
-            print(f"  {source}")
-            print(f"    Passed: {count['passed']}")
-            print(f"    Failed: {count['failed']}")
+            if not asjson:
+                print(f"  {source}")
+                print(f"    Passed: {count['passed']}")
+                print(f"    Failed: {count['failed']}")
+            else:
+                json_response.setdefault('sources',{})[source] = {'passed':count['passed'],'failed':count['failed']}
 
-        print('\nMessages per Source Domain:')
+        if not asjson:
+            print('\nMessages per Source Domain:')
         for domain in sorted(domains.keys()):
             count = domains[domain]['count']
-            print(f"  {domain}")
-            print(f"    Passed: {count['passed']}")
-            print(f"    Failed: {count['failed']}")
+            if not asjson:
+                print(f"  {domain}")
+                print(f"    Passed: {count['passed']}")
+                print(f"    Failed: {count['failed']}")
+            else:
+                json_response.setdefault('domains',{})[domain] = {'passed':count['passed'],'failed':count['failed']}
+        if asjson:
+            print(json.dumps(json_response,indent=2))
 
     # Clean up.
     shutil.rmtree(directory)
     if delete_messages:
         mailbox.delete(uids)
 
+if __name__ == '__main__':
+    main()
