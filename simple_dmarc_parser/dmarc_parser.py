@@ -16,7 +16,7 @@ parser.add_argument('--password', help='IMAP Password', required=False)
 parser.add_argument('--config', help='Config file to use', required=False)
 parser.add_argument('--delete', help='Delete report messages after processing. THIS CANNOT BE UNDONE.', action='store_true')
 parser.add_argument('--silent', help='Silences non-error output.', action='store_true')
-parser.add_argument('--asjson', help='Prints non-error output in json format', action='store_false',required=False)
+parser.add_argument('--asjson', help='Prints non-error output in json format', action='store_true')
 
 
 def process_record(record, sources, domains):
